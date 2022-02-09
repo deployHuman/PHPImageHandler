@@ -1,5 +1,5 @@
 {
-    "name": "deployhuman/PHPImageHandler",
+    "name": "deployhuman/phpimagehandler",
     "license": "MIT",
     "description": "Simple handling of images in php, gd or imagick",
     "type": "library",
