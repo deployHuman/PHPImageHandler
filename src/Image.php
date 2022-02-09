@@ -157,7 +157,7 @@ class Image
         return $this->imageMimeType;
     }
 
-    public function adaptiveResizeImage(int $maxWidth, int $maxHeight, bool $upscale = true)
+    public function adaptiveResize(int $maxWidth, int $maxHeight, bool $upscale = true)
     {
         switch ($this->SelectedLib) {
             case Imagelib::gd:
@@ -199,9 +199,6 @@ class Image
                 break;
         }
     }
-
-
-
 
 
     public function saveToFile(string $filename, int $quality = 100, bool $AllowOVerWrite = true): bool

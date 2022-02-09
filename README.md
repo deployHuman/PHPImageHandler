@@ -20,7 +20,7 @@ require_once(__DIR__ . '/vendor/autoload.php');
 
 $image = new Image('c:\filepath\image.jpg');
 
-$image->resize(100,200,true);
+$image->adaptiveResize(100,200,true);
 $image-saveToFile('c:\filepath\newimage.png');
 
 ?>
