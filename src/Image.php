@@ -3,24 +3,27 @@
 namespace DeployHuman\PHPImageHandler;
 
 use DeployHuman\PHPImageHandler\Enum\ImageLib;
+use GdImage;
 use Imagick;
 
 class Image
 {
-    protected ImageLib $SelectedLib;
+    protected ImageLib $SelectedLib = ImageLib::gd;
     protected $resource;
+    protected string $imageMimeType = "image/png";
+    protected string $imageExtension = '.png';
 
     public function __construct(string|Image $image, ImageLib $preferedImagelib = Imagelib::gd)
     {
         $this->checkSystem();
         $this->SelectedLib = $preferedImagelib;
-        $this->$this->resource = $this->loadImage($image);
+        $this->resource = $this->loadImage($image);
         if ($this->resource === false) {
             throw new \Exception('Image could not be loaded');
         }
     }
 
-    private function checkSystem(): never
+    private function checkSystem(): void
     {
         if (version_compare(PHP_VERSION, '8.1.0', '<')) {
             throw new \Exception('PHP 8.1.0 or higher required');
@@ -75,6 +78,9 @@ class Image
             case Imagelib::gd:
                 $info = getimagesize($file);
                 $type = $info[2];
+
+                $this->imageMimeType = image_type_to_mime_type($type);
+                $this->imageExtension = image_type_to_extension($type, false);
                 if ($type == IMAGETYPE_JPEG) {
                     return imagecreatefromjpeg($file);
                 } else if ($type == IMAGETYPE_GIF) {
@@ -87,6 +93,12 @@ class Image
             case Imagelib::imagick:
                 $image = new \Imagick();
                 $image->readImage($file);
+                $icc = $image->getImageProfiles('icc', true);
+                $image->stripImage();
+                $image->profileImage('icc', $icc['icc'] ?? '');
+                $this->imageMimeType =  $image->getImageMimeType();
+                //get extension from file 
+                $this->imageExtension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
                 return $image;
 
                 break;
@@ -109,7 +121,7 @@ class Image
                 /**
                  * @var Imagick $localresource
                  */
-                $localresource = $this->resource;
+                $localresource = clone $this->resource;
                 return $localresource->getImageWidth();
                 break;
 
@@ -130,7 +142,7 @@ class Image
                 /**
                  * @var Imagick $localresource
                  */
-                $localresource = $this->resource;
+                $localresource = clone $this->resource;
                 return $localresource->getImageHeight();
                 break;
 
@@ -140,41 +152,44 @@ class Image
         }
     }
 
-    public function getType(): int
+    public function getType(): string
     {
-        switch ($this->SelectedLib) {
-            case Imagelib::gd:
-                return image_type_to_extension(image_type_to_mime_type($this->resource), false);
-                break;
-
-            case Imagelib::imagick:
-                /**
-                 * @var Imagick $localresource
-                 */
-                $localresource = $this->resource;
-                return $localresource->getImageFormat();
-                break;
-
-            default:
-                return false;
-                break;
-        }
+        return $this->imageMimeType;
     }
 
-    public function resize(int $maxWidth, int $maxHeight, bool $upscale = false): bool
+    public function adaptiveResizeImage(int $maxWidth, int $maxHeight, bool $upscale = true)
     {
         switch ($this->SelectedLib) {
             case Imagelib::gd:
-                imagecopyresampled($this->resource, $this->resource, 0, 0, 0, 0, $maxWidth, $maxHeight, $this->getWidth(), $this->getHeight());
+
+                // imagecopyresampled($this->resource, $this->resource, 0, 0, 0, 0, $maxWidth, $maxHeight, $this->getWidth(), $this->getHeight());
+                // return true;
+
+                $sourceWidth = $this->getWidth();
+                $sourceHeight = $this->getHeight();
+                $sourceRatio = $sourceWidth / $sourceHeight;
+                $targetRatio = $maxWidth / $maxHeight;
+                if ($sourceRatio > $targetRatio) {
+                    $targetWidth = $maxWidth;
+                    $targetHeight = $maxWidth / $sourceRatio;
+                } else {
+                    $targetWidth = $maxHeight * $sourceRatio;
+                    $targetHeight = $maxHeight;
+                }
+                $thumbImg = imagecreatetruecolor($targetWidth, $targetHeight);
+                imagecopyresampled($thumbImg, $this->resource, 0, 0, 0, 0, $targetWidth, $targetHeight, $sourceWidth, $sourceHeight);
+                $this->resource = null;
+                $this->resource = $thumbImg;
                 return true;
+
                 break;
 
             case Imagelib::imagick:
                 /**
                  * @var Imagick $localresource
                  */
-                $localresource = $this->resource;
-                $localresource->adaptiveResizeImage($maxWidth, $maxHeight, $upscale);
+                $localresource = clone $this->resource;
+                $localresource->adaptiveResizeImage($maxWidth, $maxHeight, $upscale, true);
                 $this->resource = $localresource;
                 return true;
                 break;
@@ -185,17 +200,24 @@ class Image
         }
     }
 
-    public function saveToFile(string $filename, int $quality = 100): bool
+
+
+
+
+    public function saveToFile(string $filename, int $quality = 100, bool $AllowOVerWrite = true): bool
     {
         $ext = pathinfo($filename, PATHINFO_EXTENSION);
         switch ($this->SelectedLib) {
             case Imagelib::gd:
+                if ($AllowOVerWrite && file_exists($filename)) unlink($filename);
                 if ($ext == 'jpg' || $ext == 'jpeg') {
                     return imagejpeg($this->resource, $filename, $quality);
                 } else if ($ext == 'gif') {
-                    return imagegif($this->resource, $filename);
-                } else {
-                    return imagepng($this->resource, $filename);
+                    return imagegif($this->resource, $filename, $quality);
+                } else if ($ext == 'png') {
+                    return imagepng($this->resource, $filename, $quality);
+                } else if ($ext == 'webp') {
+                    return imagewebp($this->resource, $filename, $quality);
                 }
                 break;
 
@@ -213,9 +235,8 @@ class Image
                 } else {
                     $localresource->setImageFormat('png');
                 }
-
-                $localresource->writeImage($filename);
-                return true;
+                if ($AllowOVerWrite && file_exists($filename)) unlink($filename);
+                return $localresource->writeImage($filename);
                 break;
 
             default:

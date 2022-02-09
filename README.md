@@ -2,8 +2,9 @@
 
 Quick repo for easy handling of image
 
-Will work both with GD and Imagick Extensions
+Will work both with GD and Imagick Extensions.
 
+Removes all Exif data.
 
 ### Composer
 
